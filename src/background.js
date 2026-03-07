@@ -15,12 +15,23 @@ const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
 // Message router
 // ---------------------------------------------------------------------------
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Only accept messages from our own extension
+  if (sender.id !== chrome.runtime.id) return;
+
   if (msg.action === 'saveChat') {
     handleSaveChat(msg).then(sendResponse).catch(err => {
       sendResponse({ ok: false, error: err.message });
     });
     return true; // keep channel open for async response
+  }
+
+  if (msg.action === 'signIn') {
+    getToken(true)
+      .then(() => getStatus())
+      .then(sendResponse)
+      .catch(() => sendResponse({ signedIn: false }));
+    return true;
   }
 
   if (msg.action === 'getStatus') {
@@ -82,7 +93,7 @@ async function signOut() {
 // Drive helpers
 // ---------------------------------------------------------------------------
 
-async function driveRequest(url, options, token) {
+async function driveRequest(url, options, token, isRetry = false) {
   const res = await fetch(url, {
     ...options,
     headers: {
@@ -91,11 +102,11 @@ async function driveRequest(url, options, token) {
     },
   });
 
-  if (res.status === 401) {
+  if (res.status === 401 && !isRetry) {
     // Token expired — remove and retry once with a fresh token
     await new Promise(resolve => chrome.identity.removeCachedAuthToken({ token }, resolve));
     const newToken = await getToken(true);
-    return driveRequest(url, options, newToken);
+    return driveRequest(url, options, newToken, true);
   }
 
   return res;
@@ -104,7 +115,7 @@ async function driveRequest(url, options, token) {
 async function ensureFolder(token) {
   // Check cache first
   const cached = await chrome.storage.local.get('folderId');
-  if (cached.folderId) {
+  if (cached.folderId && /^[a-zA-Z0-9_-]+$/.test(cached.folderId)) {
     // Verify folder still exists
     const res = await driveRequest(
       `${DRIVE_API}/files/${cached.folderId}?fields=id,trashed`,
@@ -206,7 +217,12 @@ async function uploadFile(token, folderId, fileName, content) {
     parents: [folderId],
   };
 
-  const boundary = 'lapidary_boundary_' + Math.random().toString(36).slice(2);
+  // Generate a boundary that doesn't appear in the content
+  let boundary;
+  do {
+    boundary = 'lapidary_' + crypto.randomUUID().replace(/-/g, '');
+  } while (content.includes(boundary));
+
   const body = [
     `--${boundary}`,
     'Content-Type: application/json; charset=UTF-8',

@@ -21,16 +21,10 @@ function renderSignedOut() {
     signInBtn.textContent = 'Signing in…';
     setMessage('');
     try {
-      // Trigger auth by sending a save with zero messages — background will
-      // run getToken(interactive=true) and return an auth error, which is fine.
-      // Better: just call getStatus which triggers auth via background.
-      const res = await chrome.runtime.sendMessage({ action: 'signIn' });
-      // signIn isn't a real action; token is obtained on first save.
-      // So we just reload status after a moment.
+      await chrome.runtime.sendMessage({ action: 'signIn' });
     } catch {
-      // ignore
+      // ignore — refreshStatus below will pick up the result
     }
-    // Re-check status (getAuthToken with interactive will have fired)
     await refreshStatus();
   });
 
