@@ -198,7 +198,7 @@ async function _doEnsureFolder(token) {
 // Markdown builder
 // ---------------------------------------------------------------------------
 
-function buildMarkdown(messages, url) {
+function buildMarkdown(messages, url, sources) {
   const now = new Date();
   const dateStr = now.toISOString().replace('T', ' ').slice(0, 16);
 
@@ -211,6 +211,16 @@ function buildMarkdown(messages, url) {
     lines.push(text);
     lines.push('');
     lines.push('---');
+    lines.push('');
+  }
+
+  if (sources && sources.length > 0) {
+    lines.push('## Sources');
+    lines.push('');
+    sources.forEach(({ title, siteName, url: sourceUrl }, i) => {
+      const label = title || siteName || sourceUrl;
+      lines.push(`${i + 1}. [${label}](${sourceUrl})`);
+    });
     lines.push('');
   }
 
@@ -288,14 +298,14 @@ async function uploadFile(token, folderId, fileName, content) {
 // Main handler
 // ---------------------------------------------------------------------------
 
-async function handleSaveChat({ messages, url }) {
+async function handleSaveChat({ messages, url, sources }) {
   if (!messages || messages.length === 0) {
     throw new Error('No messages to save.');
   }
 
   const token = await getToken(true);
   const folderId = await ensureFolder(token);
-  const markdown = buildMarkdown(messages, url);
+  const markdown = buildMarkdown(messages, url, sources);
   const fileName = buildFileName(messages);
   const file = await uploadFile(token, folderId, fileName, markdown);
 

@@ -16,68 +16,83 @@ const TOAST_ID = 'lapidary-toast';
 
 /**
  * Recursively walks a DOM node and returns a Markdown string.
- * Preserves links, bold, italic, inline code, code blocks, and lists.
+ * Preserves links, bold, italic, inline code, code blocks, lists,
+ * and Gemini citation markers (source-footnote → [[N]](url)).
+ *
+ * @param {Node} node
+ * @param {Array<{url:string}>} sources - ordered list from scrapeSources()
  */
-function htmlToMarkdown(node) {
-  if (node.nodeType === Node.TEXT_NODE) {
-    return node.textContent;
-  }
-  if (node.nodeType !== Node.ELEMENT_NODE) return '';
+function htmlToMarkdown(node, sources = []) {
+  function walk(n) {
+    if (n.nodeType === Node.TEXT_NODE) return n.textContent;
+    if (n.nodeType !== Node.ELEMENT_NODE) return '';
 
-  const tag = node.tagName.toLowerCase();
+    const tag = n.tagName.toLowerCase();
 
-  // Skip interactive UI elements injected into the response (copy buttons, etc.)
-  if (tag === 'button' || tag === 'svg' || tag === 'mat-icon') return '';
+    // Skip interactive UI elements injected into the response
+    if (tag === 'button' || tag === 'svg' || tag === 'mat-icon') return '';
 
-  const children = () => [...node.childNodes].map(htmlToMarkdown).join('');
+    const children = () => [...n.childNodes].map(walk).join('');
 
-  switch (tag) {
-    case 'a': {
-      const href = node.getAttribute('href');
-      const text = children();
-      if (!href || href.startsWith('javascript:')) return text;
-      // Make relative URLs absolute
-      const abs = href.startsWith('http') ? href : new URL(href, location.origin).href;
-      return `[${text}](${abs})`;
-    }
-    case 'strong':
-    case 'b':
-      return `**${children()}**`;
-    case 'em':
-    case 'i':
-      return `*${children()}*`;
-    case 'pre': {
-      // Use textContent to get raw code without any injected UI children
-      const lang = (node.querySelector('code') || node).className.match(/language-(\S+)/)?.[1] ?? '';
-      return `\`\`\`${lang}\n${node.textContent.trimEnd()}\n\`\`\`\n\n`;
-    }
-    case 'code':
-      // Only wrap as inline code when not inside a <pre> (already handled above)
-      return node.closest('pre') ? node.textContent : `\`${node.textContent}\``;
-    case 'br':
-      return '\n';
-    case 'p':
-      return children() + '\n\n';
-    case 'h1': return `# ${children()}\n\n`;
-    case 'h2': return `## ${children()}\n\n`;
-    case 'h3': return `### ${children()}\n\n`;
-    case 'h4': return `#### ${children()}\n\n`;
-    case 'li': {
-      const isOrdered = node.parentElement?.tagName.toLowerCase() === 'ol';
-      if (isOrdered) {
-        const idx = [...node.parentElement.children].indexOf(node) + 1;
-        return `${idx}. ${children().trim()}\n`;
+    switch (tag) {
+      case 'source-footnote': {
+        // Gemini's inline citation marker — data-turn-source-index is 1-based
+        const sup = n.querySelector('sup[data-turn-source-index]');
+        if (!sup) return '';
+        const idx = parseInt(sup.getAttribute('data-turn-source-index'), 10);
+        const source = sources[idx - 1];
+        return source?.url ? `[[${idx}]](${source.url})` : `[${idx}]`;
       }
-      return `- ${children().trim()}\n`;
+      case 'sup':
+        // Bare <sup> inside source-footnote is handled above; skip here
+        if (n.getAttribute('data-turn-source-index')) return '';
+        return children();
+      case 'a': {
+        const href = n.getAttribute('href');
+        const text = children();
+        if (!href || href.startsWith('javascript:')) return text;
+        const abs = href.startsWith('http') ? href : new URL(href, location.origin).href;
+        return `[${text}](${abs})`;
+      }
+      case 'strong':
+      case 'b':
+        return `**${children()}**`;
+      case 'em':
+      case 'i':
+        return `*${children()}*`;
+      case 'pre': {
+        const lang = (n.querySelector('code') || n).className.match(/language-(\S+)/)?.[1] ?? '';
+        return `\`\`\`${lang}\n${n.textContent.trimEnd()}\n\`\`\`\n\n`;
+      }
+      case 'code':
+        return n.closest('pre') ? n.textContent : `\`${n.textContent}\``;
+      case 'br':
+        return '\n';
+      case 'p':
+        return children() + '\n\n';
+      case 'h1': return `# ${children()}\n\n`;
+      case 'h2': return `## ${children()}\n\n`;
+      case 'h3': return `### ${children()}\n\n`;
+      case 'h4': return `#### ${children()}\n\n`;
+      case 'li': {
+        const isOrdered = n.parentElement?.tagName.toLowerCase() === 'ol';
+        if (isOrdered) {
+          const idx = [...n.parentElement.children].indexOf(n) + 1;
+          return `${idx}. ${children().trim()}\n`;
+        }
+        return `- ${children().trim()}\n`;
+      }
+      case 'ul':
+      case 'ol':
+        return children() + '\n';
+      case 'hr':
+        return '\n---\n\n';
+      default:
+        return children();
     }
-    case 'ul':
-    case 'ol':
-      return children() + '\n';
-    case 'hr':
-      return '\n---\n\n';
-    default:
-      return children();
   }
+
+  return walk(node);
 }
 
 // ---------------------------------------------------------------------------
@@ -85,22 +100,39 @@ function htmlToMarkdown(node) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Scrapes the Sources sidebar panel.
+ * Returns an array of { title, siteName, url } — deduplicated by base URL.
+ */
+function scrapeSources() {
+  const sources = [];
+
+  // Preserve order — data-turn-source-index is 1-based into this list.
+  // Do NOT deduplicate: the same base URL can appear multiple times with
+  // different #:~:text= fragments pointing to different passages.
+  document.querySelectorAll('inline-source-card').forEach(card => {
+    const a = card.querySelector('a[href]');
+    const title = card.querySelector('.title')?.textContent.trim() ?? '';
+    const siteName = card.querySelector('.source-path')?.textContent.trim() ?? '';
+    sources.push({ title, siteName, url: a ? a.href : '' });
+  });
+
+  return sources;
+}
+
+/**
  * Returns an array of { role: 'user'|'model', text: string } objects.
  * Selector priority: try several known patterns and log clearly if nothing matches.
  */
-function scrapeMessages() {
+function scrapeMessages(sources) {
   const messages = [];
-
-  // Each conversation turn is wrapped in a <message-content> or similar element.
-  // We try multiple selector strategies so the extension degrades gracefully
-  // when Gemini updates its DOM.
+  const md = el => htmlToMarkdown(el, sources).trim();
 
   // Strategy 1: role-attributed elements (most reliable if present)
   const roleEls = document.querySelectorAll('[data-message-author-role]');
   if (roleEls.length > 0) {
     roleEls.forEach(el => {
-      const role = el.getAttribute('data-message-author-role'); // 'user' or 'model'
-      messages.push({ role, text: htmlToMarkdown(el).trim() });
+      const role = el.getAttribute('data-message-author-role');
+      messages.push({ role, text: md(el) });
     });
     return messages;
   }
@@ -110,15 +142,12 @@ function scrapeMessages() {
   if (turns.length > 0) {
     turns.forEach(el => {
       const isUser = el.tagName === 'USER-QUERY' || el.classList.contains('user-turn');
-      messages.push({
-        role: isUser ? 'user' : 'model',
-        text: htmlToMarkdown(el).trim(),
-      });
+      messages.push({ role: isUser ? 'user' : 'model', text: md(el) });
     });
     return messages;
   }
 
-  // Strategy 3: fallback — find user query text and model response text separately
+  // Strategy 3: fallback — find user/model elements separately and interleave by DOM order
   const userEls = document.querySelectorAll(
     '.user-query-text, .user-query-bubble-with-background, [class*="user-query"]'
   );
@@ -127,7 +156,6 @@ function scrapeMessages() {
   );
 
   if (userEls.length > 0 || modelEls.length > 0) {
-    // Interleave by DOM order
     const all = [
       ...[...userEls].map(el => ({ role: 'user', el })),
       ...[...modelEls].map(el => ({ role: 'model', el })),
@@ -135,7 +163,7 @@ function scrapeMessages() {
       const pos = a.el.compareDocumentPosition(b.el);
       return pos & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
     });
-    all.forEach(({ role, el }) => messages.push({ role, text: htmlToMarkdown(el).trim() }));
+    all.forEach(({ role, el }) => messages.push({ role, text: md(el) }));
     return messages;
   }
 
@@ -255,7 +283,8 @@ async function handleSave() {
   }
 
   try {
-    const messages = scrapeMessages();
+    const sources = scrapeSources();
+    const messages = scrapeMessages(sources);
     if (messages.length === 0) {
       showToast('No messages found. The chat may be empty or Gemini updated its layout.', true);
       return;
@@ -264,6 +293,7 @@ async function handleSave() {
     const response = await chrome.runtime.sendMessage({
       action: 'saveChat',
       messages,
+      sources,
       url: location.href,
     });
 
