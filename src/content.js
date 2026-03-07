@@ -11,6 +11,76 @@ const BUTTON_ID = 'lapidary-save-btn';
 const TOAST_ID = 'lapidary-toast';
 
 // ---------------------------------------------------------------------------
+// HTML → Markdown converter
+// ---------------------------------------------------------------------------
+
+/**
+ * Recursively walks a DOM node and returns a Markdown string.
+ * Preserves links, bold, italic, inline code, code blocks, and lists.
+ */
+function htmlToMarkdown(node) {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.textContent;
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+  const tag = node.tagName.toLowerCase();
+
+  // Skip interactive UI elements injected into the response (copy buttons, etc.)
+  if (tag === 'button' || tag === 'svg' || tag === 'mat-icon') return '';
+
+  const children = () => [...node.childNodes].map(htmlToMarkdown).join('');
+
+  switch (tag) {
+    case 'a': {
+      const href = node.getAttribute('href');
+      const text = children();
+      if (!href || href.startsWith('javascript:')) return text;
+      // Make relative URLs absolute
+      const abs = href.startsWith('http') ? href : new URL(href, location.origin).href;
+      return `[${text}](${abs})`;
+    }
+    case 'strong':
+    case 'b':
+      return `**${children()}**`;
+    case 'em':
+    case 'i':
+      return `*${children()}*`;
+    case 'pre': {
+      // Use textContent to get raw code without any injected UI children
+      const lang = (node.querySelector('code') || node).className.match(/language-(\S+)/)?.[1] ?? '';
+      return `\`\`\`${lang}\n${node.textContent.trimEnd()}\n\`\`\`\n\n`;
+    }
+    case 'code':
+      // Only wrap as inline code when not inside a <pre> (already handled above)
+      return node.closest('pre') ? node.textContent : `\`${node.textContent}\``;
+    case 'br':
+      return '\n';
+    case 'p':
+      return children() + '\n\n';
+    case 'h1': return `# ${children()}\n\n`;
+    case 'h2': return `## ${children()}\n\n`;
+    case 'h3': return `### ${children()}\n\n`;
+    case 'h4': return `#### ${children()}\n\n`;
+    case 'li': {
+      const isOrdered = node.parentElement?.tagName.toLowerCase() === 'ol';
+      if (isOrdered) {
+        const idx = [...node.parentElement.children].indexOf(node) + 1;
+        return `${idx}. ${children().trim()}\n`;
+      }
+      return `- ${children().trim()}\n`;
+    }
+    case 'ul':
+    case 'ol':
+      return children() + '\n';
+    case 'hr':
+      return '\n---\n\n';
+    default:
+      return children();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // DOM scraping
 // ---------------------------------------------------------------------------
 
@@ -30,7 +100,7 @@ function scrapeMessages() {
   if (roleEls.length > 0) {
     roleEls.forEach(el => {
       const role = el.getAttribute('data-message-author-role'); // 'user' or 'model'
-      messages.push({ role, text: el.innerText.trim() });
+      messages.push({ role, text: htmlToMarkdown(el).trim() });
     });
     return messages;
   }
@@ -42,7 +112,7 @@ function scrapeMessages() {
       const isUser = el.tagName === 'USER-QUERY' || el.classList.contains('user-turn');
       messages.push({
         role: isUser ? 'user' : 'model',
-        text: el.innerText.trim(),
+        text: htmlToMarkdown(el).trim(),
       });
     });
     return messages;
@@ -65,7 +135,7 @@ function scrapeMessages() {
       const pos = a.el.compareDocumentPosition(b.el);
       return pos & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
     });
-    all.forEach(({ role, el }) => messages.push({ role, text: el.innerText.trim() }));
+    all.forEach(({ role, el }) => messages.push({ role, text: htmlToMarkdown(el).trim() }));
     return messages;
   }
 
