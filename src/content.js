@@ -151,13 +151,10 @@ function createButton() {
  */
 function findToolbar() {
   const candidates = [
-    // Current Gemini toolbar patterns (verify against live DOM):
-    'header [class*="action"]',
-    'header [class*="toolbar"]',
-    '[class*="header-actions"]',
-    '[class*="chat-header"]',
-    'header',
-    'nav',
+    // Gemini uses Angular custom elements — no <header> or <nav>
+    'top-bar-actions .right-section',   // right-side button group (preferred)
+    'top-bar-actions .buttons-container', // inner button row fallback
+    'top-bar-actions',                   // outermost custom element fallback
   ];
 
   for (const sel of candidates) {
