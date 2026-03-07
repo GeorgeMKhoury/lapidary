@@ -101,6 +101,8 @@ function showToast(message, isError = false) {
   }
 
   toast.textContent = message;
+  toast.onclick = null;
+  toast.style.cursor = 'default';
   toast.style.background = isError ? '#d93025' : '#1a73e8';
   toast.style.color = '#fff';
   toast.style.opacity = '1';
@@ -198,16 +200,15 @@ async function handleSave() {
       url: location.href,
     });
 
-    if (response.ok) {
+    if (response && response.ok) {
       showToast(`Saved! Open in Drive ↗`);
-      // Make the toast a link
       const toast = document.getElementById(TOAST_ID);
       if (toast && response.webViewLink) {
         toast.style.cursor = 'pointer';
         toast.onclick = () => window.open(response.webViewLink, '_blank');
       }
     } else {
-      showToast(`Save failed: ${response.error}`, true);
+      showToast(`Save failed: ${response ? response.error : 'No response from extension'}`, true);
     }
   } catch (err) {
     showToast(`Error: ${err.message}`, true);
@@ -240,11 +241,16 @@ let pollInterval = setInterval(() => {
   tryInject();
 }, 800);
 
-// MutationObserver to re-inject after SPA navigation removes our button
+// MutationObserver to re-inject after SPA navigation removes our button.
+// Debounced to avoid running findToolbar() on every DOM mutation during heavy rendering.
+let _injectDebounce = null;
 const observer = new MutationObserver(() => {
-  if (!document.getElementById(BUTTON_ID)) {
+  if (document.getElementById(BUTTON_ID)) return;
+  if (_injectDebounce) return;
+  _injectDebounce = setTimeout(() => {
+    _injectDebounce = null;
     tryInject();
-  }
+  }, 200);
 });
 
 observer.observe(document.body, { childList: true, subtree: true });

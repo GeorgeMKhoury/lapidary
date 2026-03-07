@@ -83,7 +83,10 @@ async function getStatus() {
 
 async function signOut() {
   const { token } = await new Promise(resolve =>
-    chrome.identity.getAuthToken({ interactive: false }, t => resolve({ token: t }))
+    chrome.identity.getAuthToken({ interactive: false }, t => {
+      void chrome.runtime.lastError; // suppress unchecked lastError warning
+      resolve({ token: t });
+    })
   );
   if (token) {
     // Revoke the token at Google so it's fully invalidated, not just cache-cleared
@@ -159,6 +162,9 @@ async function _doEnsureFolder(token) {
     { method: 'GET' },
     token
   );
+  if (!listRes.ok) {
+    throw new Error(`Drive folder search failed (${listRes.status})`);
+  }
   const listData = await listRes.json();
 
   if (listData.files && listData.files.length > 0) {
@@ -180,6 +186,9 @@ async function _doEnsureFolder(token) {
     },
     token
   );
+  if (!createRes.ok) {
+    throw new Error(`Drive folder creation failed (${createRes.status})`);
+  }
   const folder = await createRes.json();
   await chrome.storage.local.set({ folderId: folder.id, folderLink: folder.webViewLink });
   return folder.id;
