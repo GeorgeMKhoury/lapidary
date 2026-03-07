@@ -1,0 +1,8 @@
+# OS
+.DS_Store
+
+# Node (for scripts/generate-icons.js if you run it locally)
+node_modules/
+
+# Local dev overrides
+*.local
