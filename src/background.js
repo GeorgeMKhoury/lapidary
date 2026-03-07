@@ -69,7 +69,10 @@ async function getStatus() {
     const res = await fetch('https://www.googleapis.com/oauth2/v1/userinfo?alt=json', {
       headers: { Authorization: `Bearer ${token}` },
     });
+    if (!res.ok) return { signedIn: false };
+
     const info = await res.json();
+    if (!info.email) return { signedIn: false };
 
     const { folderId, folderLink } = await chrome.storage.local.get(['folderId', 'folderLink']);
     return { signedIn: true, email: info.email, folderId, folderLink };
@@ -83,6 +86,12 @@ async function signOut() {
     chrome.identity.getAuthToken({ interactive: false }, t => resolve({ token: t }))
   );
   if (token) {
+    // Revoke the token at Google so it's fully invalidated, not just cache-cleared
+    try {
+      await fetch(`https://oauth2.googleapis.com/revoke?token=${token}`, { method: 'POST' });
+    } catch {
+      // Revocation failure is non-fatal — still clear locally
+    }
     await new Promise(resolve => chrome.identity.removeCachedAuthToken({ token }, resolve));
   }
   await chrome.storage.local.remove(['folderId', 'folderLink']);
@@ -92,6 +101,9 @@ async function signOut() {
 // ---------------------------------------------------------------------------
 // Drive helpers
 // ---------------------------------------------------------------------------
+
+// Guard against concurrent ensureFolder calls creating duplicate Drive folders
+let _ensureFolderInFlight = null;
 
 async function driveRequest(url, options, token, isRetry = false) {
   const res = await fetch(url, {
@@ -113,6 +125,14 @@ async function driveRequest(url, options, token, isRetry = false) {
 }
 
 async function ensureFolder(token) {
+  if (_ensureFolderInFlight) return _ensureFolderInFlight;
+  _ensureFolderInFlight = _doEnsureFolder(token).finally(() => {
+    _ensureFolderInFlight = null;
+  });
+  return _ensureFolderInFlight;
+}
+
+async function _doEnsureFolder(token) {
   // Check cache first
   const cached = await chrome.storage.local.get('folderId');
   if (cached.folderId && /^[a-zA-Z0-9_-]+$/.test(cached.folderId)) {

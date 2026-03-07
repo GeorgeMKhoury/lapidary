@@ -212,9 +212,12 @@ async function handleSave() {
   } catch (err) {
     showToast(`Error: ${err.message}`, true);
   } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = 'Save to Drive';
+    // Re-query by ID — the original btn reference may be detached if Gemini
+    // navigated to a new chat while the save was in progress.
+    const currentBtn = document.getElementById(BUTTON_ID);
+    if (currentBtn) {
+      currentBtn.disabled = false;
+      currentBtn.textContent = 'Save to Drive';
     }
   }
 }
