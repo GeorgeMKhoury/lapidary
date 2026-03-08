@@ -111,20 +111,30 @@ async function scrapeSources() {
   // If the sidebar is already open, scrape directly
   let cards = document.querySelectorAll('inline-source-card');
 
-  // If not open but citations exist, click the <sup> marker to force the sidebar open
+  // If not open but citations exist, click a citation element to force the sidebar open.
+  // We try multiple candidates because Angular's click listener location varies.
   if (cards.length === 0) {
-    const sup = document.querySelector('sup[data-turn-source-index]');
-    if (sup) {
-      sup.click();
+    const clickCandidates = [
+      document.querySelector('mat-icon[data-mat-icon-name="link"]'), // the visible 🔗 icon
+      document.querySelector('source-footnote'),                      // custom element
+      document.querySelector('sup[data-turn-source-index]'),          // inner sup
+      document.querySelector('[class*="citation-end"]'),              // citation span
+    ].filter(Boolean);
 
-      // Poll until inline-source-card elements appear, up to 2s
-      for (let i = 0; i < 20; i++) {
+    for (const target of clickCandidates) {
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+
+      // Poll up to 1s for the sidebar to render
+      for (let i = 0; i < 10; i++) {
         await new Promise(resolve => setTimeout(resolve, 100));
         cards = document.querySelectorAll('inline-source-card');
         if (cards.length > 0) break;
       }
 
-      // Close the sidebar
+      if (cards.length > 0) break; // found sources, stop trying other candidates
+    }
+
+    if (cards.length > 0) {
       const closeBtn = document.querySelector('[data-test-id="close-button"]');
       if (closeBtn) closeBtn.click();
     }
