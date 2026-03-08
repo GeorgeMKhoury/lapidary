@@ -111,20 +111,21 @@ async function scrapeSources() {
   // If the sidebar is already open, scrape directly
   let cards = document.querySelectorAll('inline-source-card');
 
-  // If not open but citations exist, click one to force Angular to render the panel
+  // If not open but citations exist, click the <sup> marker to force the sidebar open
   if (cards.length === 0) {
-    const footnote = document.querySelector('source-footnote');
-    if (footnote) {
-      footnote.click();
-      // Wait for Angular to render the sidebar
-      await new Promise(resolve => setTimeout(resolve, 300));
-      cards = document.querySelectorAll('inline-source-card');
+    const sup = document.querySelector('sup[data-turn-source-index]');
+    if (sup) {
+      sup.click();
 
-      // Close the sidebar so the user doesn't see it flash open
-      const closeBtn = document.querySelector(
-        'side-bar-sources button[aria-label="Close sidebar"], ' +
-        '[data-test-id="close-button"]'
-      );
+      // Poll until inline-source-card elements appear, up to 2s
+      for (let i = 0; i < 20; i++) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        cards = document.querySelectorAll('inline-source-card');
+        if (cards.length > 0) break;
+      }
+
+      // Close the sidebar
+      const closeBtn = document.querySelector('[data-test-id="close-button"]');
       if (closeBtn) closeBtn.click();
     }
   }
