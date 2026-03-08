@@ -9,7 +9,10 @@
   ],
   "host_permissions": [
     "https://gemini.google.com/*",
-    "https://www.googleapis.com/*"
+    "https://www.googleapis.com/drive/*",
+    "https://www.googleapis.com/upload/drive/*",
+    "https://www.googleapis.com/oauth2/*",
+    "https://oauth2.googleapis.com/*"
   ],
   "background": {
     "service_worker": "src/background.js"

@@ -61,8 +61,12 @@ function htmlToMarkdown(node, sources = []) {
       case 'i':
         return `*${children()}*`;
       case 'pre': {
-        const lang = (n.querySelector('code') || n).className.match(/language-(\S+)/)?.[1] ?? '';
-        return `\`\`\`${lang}\n${n.textContent.trimEnd()}\n\`\`\`\n\n`;
+        // Use the <code> element if present to avoid picking up UI text
+        // (e.g., copy buttons) that Gemini nests inside the <pre>.
+        const code = n.querySelector('code');
+        const lang = (code || n).className.match(/language-(\S+)/)?.[1] ?? '';
+        const text = (code || n).textContent;
+        return `\`\`\`${lang}\n${text.trimEnd()}\n\`\`\`\n\n`;
       }
       case 'code':
         return n.closest('pre') ? n.textContent : `\`${n.textContent}\``;
