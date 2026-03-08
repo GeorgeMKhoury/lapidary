@@ -107,13 +107,34 @@ function htmlToMarkdown(node, sources = []) {
  * Scrapes the Sources sidebar panel.
  * Returns an array of { title, siteName, url } — deduplicated by base URL.
  */
-function scrapeSources() {
+async function scrapeSources() {
+  // If the sidebar is already open, scrape directly
+  let cards = document.querySelectorAll('inline-source-card');
+
+  // If not open but citations exist, click one to force Angular to render the panel
+  if (cards.length === 0) {
+    const footnote = document.querySelector('source-footnote');
+    if (footnote) {
+      footnote.click();
+      // Wait for Angular to render the sidebar
+      await new Promise(resolve => setTimeout(resolve, 300));
+      cards = document.querySelectorAll('inline-source-card');
+
+      // Close the sidebar so the user doesn't see it flash open
+      const closeBtn = document.querySelector(
+        'side-bar-sources button[aria-label="Close sidebar"], ' +
+        '[data-test-id="close-button"]'
+      );
+      if (closeBtn) closeBtn.click();
+    }
+  }
+
   const sources = [];
 
   // Preserve order — data-turn-source-index is 1-based into this list.
   // Do NOT deduplicate: the same base URL can appear multiple times with
   // different #:~:text= fragments pointing to different passages.
-  document.querySelectorAll('inline-source-card').forEach(card => {
+  cards.forEach(card => {
     const a = card.querySelector('a[href]');
     const title = card.querySelector('.title')?.textContent.trim() ?? '';
     const siteName = card.querySelector('.source-path')?.textContent.trim() ?? '';
@@ -287,7 +308,7 @@ async function handleSave() {
   }
 
   try {
-    const sources = scrapeSources();
+    const sources = await scrapeSources();
     const messages = scrapeMessages(sources);
     if (messages.length === 0) {
       showToast('No messages found. The chat may be empty or Gemini updated its layout.', true);
