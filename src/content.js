@@ -132,6 +132,20 @@ function htmlToMarkdown(node, sources = []) {
       case 'td':
       case 'th':
         return children();
+      case 'generated-image': {
+        const img = n.querySelector('img.image');
+        if (!img) return '';
+        const src = img.getAttribute('src') || '';
+        if (!src || src.startsWith('data:')) return '';
+        const alt = (img.getAttribute('alt') || 'AI generated image').replace(/^,\s*/, '');
+        return `![${alt}](${src})\n\n`;
+      }
+      case 'img': {
+        const src = n.getAttribute('src') || '';
+        if (!src || src.startsWith('data:')) return '';
+        const alt = (n.getAttribute('alt') || '').replace(/^,\s*/, '');
+        return `![${alt}](${src})\n\n`;
+      }
       default:
         return children();
     }
@@ -217,6 +231,20 @@ function htmlToCleanHtml(node, sources = []) {
       case 'tr':     return `<tr>${children()}</tr>`;
       case 'th':     return `<th>${children()}</th>`;
       case 'td':     return `<td>${children()}</td>`;
+      case 'generated-image': {
+        const img = n.querySelector('img.image');
+        if (!img) return '';
+        const src = img.getAttribute('src') || '';
+        if (!src || src.startsWith('data:')) return '';
+        const alt = (img.getAttribute('alt') || 'AI generated image').replace(/^,\s*/, '');
+        return `<figure><img src="${esc(src)}" alt="${esc(alt)}" style="max-width:100%"></figure>`;
+      }
+      case 'img': {
+        const src = n.getAttribute('src') || '';
+        if (!src || src.startsWith('data:')) return '';
+        const alt = (n.getAttribute('alt') || '').replace(/^,\s*/, '');
+        return `<img src="${esc(src)}" alt="${esc(alt)}" style="max-width:100%">`;
+      }
       default:       return children();
     }
   }

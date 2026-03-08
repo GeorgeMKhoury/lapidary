@@ -337,6 +337,40 @@ async function uploadFile(token, folderId, fileName, content, format) {
 }
 
 // ---------------------------------------------------------------------------
+// Inline external images as base64 data URIs (required for Drive HTML import)
+// ---------------------------------------------------------------------------
+
+async function inlineImages(html) {
+  const imgRe = /<img\s[^>]*src="(https?:\/\/[^"]+)"[^>]*>/gi;
+  const matches = [...html.matchAll(imgRe)];
+  if (matches.length === 0) return html;
+
+  const replacements = await Promise.all(matches.map(async ([tag, src]) => {
+    try {
+      const res = await fetch(src);
+      if (!res.ok) return { tag, replacement: tag };
+      const blob = await res.blob();
+      const mime = blob.type || 'image/png';
+      const buffer = await blob.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      const b64 = btoa(binary);
+      const dataUri = `data:${mime};base64,${b64}`;
+      return { tag, replacement: tag.replace(src, dataUri) };
+    } catch {
+      return { tag, replacement: tag };
+    }
+  }));
+
+  let result = html;
+  for (const { tag, replacement } of replacements) {
+    result = result.replace(tag, replacement);
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
 
@@ -349,9 +383,12 @@ async function handleSaveChat({ messages, url, sources, title }) {
 
   const token = await getToken(true);
   const folderId = await ensureFolder(token);
-  const content = saveFormat === 'googledoc'
+  let content = saveFormat === 'googledoc'
     ? buildHtml(messages, url, sources)
     : buildMarkdown(messages, url, sources);
+  if (saveFormat === 'googledoc') {
+    content = await inlineImages(content);
+  }
   const fileName = buildFileName(messages, title, saveFormat);
   const file = await uploadFile(token, folderId, fileName, content, saveFormat);
 
