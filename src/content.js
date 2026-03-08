@@ -91,6 +91,35 @@ function htmlToMarkdown(node, sources = []) {
         return children() + '\n';
       case 'hr':
         return '\n---\n\n';
+      case 'table': {
+        const rows = [...n.querySelectorAll('tr')];
+        if (rows.length === 0) return '';
+
+        const mdRows = rows.map(row => {
+          const cells = [...row.querySelectorAll('td, th')].map(cell => {
+            // Process cell content, then flatten to a single line
+            const content = [...cell.childNodes].map(walk).join('').trim();
+            return content.replace(/\|/g, '\\|').replace(/\n+/g, ' ');
+          });
+          return '| ' + cells.join(' | ') + ' |';
+        });
+
+        // Insert GFM separator after the first (header) row
+        const colCount = rows[0].querySelectorAll('td, th').length;
+        const separator = '| ' + Array(colCount).fill('---').join(' | ') + ' |';
+        mdRows.splice(1, 0, separator);
+
+        return mdRows.join('\n') + '\n\n';
+      }
+      // thead/tbody/tr/td/th are consumed by the 'table' case above via
+      // querySelectorAll, so these only fire if they appear outside a table.
+      case 'thead':
+      case 'tbody':
+      case 'tfoot':
+      case 'tr':
+      case 'td':
+      case 'th':
+        return children();
       default:
         return children();
     }
@@ -326,10 +355,13 @@ async function handleSave() {
       return;
     }
 
+    const title = document.querySelector('[data-test-id="conversation-title"]')?.textContent.trim() ?? '';
+
     const response = await chrome.runtime.sendMessage({
       action: 'saveChat',
       messages,
       sources,
+      title,
       url: location.href,
     });
 
