@@ -195,6 +195,18 @@ async function _doEnsureFolder(token) {
 }
 
 // ---------------------------------------------------------------------------
+// Shared utilities
+// ---------------------------------------------------------------------------
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ---------------------------------------------------------------------------
 // Markdown builder
 // ---------------------------------------------------------------------------
 
@@ -231,30 +243,23 @@ function buildHtml(messages, url, sources) {
   const now = new Date();
   const dateStr = now.toISOString().replace('T', ' ').slice(0, 16);
 
-  const escape = s => s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-
   const parts = [
     '<html><body>',
-    `<h1>Gemini Chat \u2014 ${escape(dateStr)}</h1>`,
-    `<p><a href="${escape(url)}">${escape(url)}</a></p>`,
+    `<h1>Gemini Chat \u2014 ${esc(dateStr)}</h1>`,
+    `<p><a href="${esc(url)}">${esc(url)}</a></p>`,
   ];
 
-  for (const { role, text } of messages) {
+  for (const { role, html } of messages) {
     const heading = role === 'user' ? 'You' : 'Gemini';
     parts.push(`<h2>${heading}</h2>`);
-    const html = escape(text).replace(/\n/g, '<br>');
-    parts.push(`<p>${html}</p>`);
+    parts.push(html);
   }
 
   if (sources && sources.length > 0) {
     parts.push('<h2>Sources</h2><ol>');
     for (const { title, siteName, url: sourceUrl } of sources) {
-      const label = escape(title || siteName || sourceUrl);
-      parts.push(`<li><a href="${escape(sourceUrl)}">${label}</a></li>`);
+      const label = esc(title || siteName || sourceUrl);
+      parts.push(`<li><a href="${esc(sourceUrl)}">${label}</a></li>`);
     }
     parts.push('</ol>');
   }

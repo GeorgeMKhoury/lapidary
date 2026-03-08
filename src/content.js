@@ -11,6 +11,18 @@ const BUTTON_ID = 'lapidary-save-btn';
 const TOAST_ID = 'lapidary-toast';
 
 // ---------------------------------------------------------------------------
+// Shared utilities
+// ---------------------------------------------------------------------------
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ---------------------------------------------------------------------------
 // HTML → Markdown converter
 // ---------------------------------------------------------------------------
 
@@ -129,6 +141,90 @@ function htmlToMarkdown(node, sources = []) {
 }
 
 // ---------------------------------------------------------------------------
+// HTML → clean HTML converter (for Google Doc upload)
+// ---------------------------------------------------------------------------
+
+/**
+ * Recursively walks a DOM node and returns a clean HTML string suitable for
+ * uploading to Drive as a Google Doc. Strips Gemini-specific elements
+ * (buttons, SVGs, Angular custom elements) and preserves semantic structure
+ * including tables, headings, lists, bold, italic, code, and links.
+ *
+ * @param {Node} node
+ * @param {Array<{url:string}>} sources - ordered list from scrapeSources()
+ */
+function htmlToCleanHtml(node, sources = []) {
+  function walk(n) {
+    if (n.nodeType === Node.TEXT_NODE) return esc(n.textContent);
+    if (n.nodeType !== Node.ELEMENT_NODE) return '';
+
+    const tag = n.tagName.toLowerCase();
+
+    if (tag === 'button' || tag === 'svg' || tag === 'mat-icon') return '';
+
+    const children = () => [...n.childNodes].map(walk).join('');
+
+    switch (tag) {
+      case 'source-footnote': {
+        const sup = n.querySelector('sup[data-turn-source-index]');
+        if (!sup) return '';
+        const idx = parseInt(sup.getAttribute('data-turn-source-index'), 10);
+        const source = sources[idx - 1];
+        return source?.url
+          ? `<a href="${esc(source.url)}"><sup>[${idx}]</sup></a>`
+          : `<sup>[${idx}]</sup>`;
+      }
+      case 'sup':
+        if (n.getAttribute('data-turn-source-index')) return '';
+        return `<sup>${children()}</sup>`;
+      case 'a': {
+        const href = n.getAttribute('href');
+        if (!href || href.startsWith('javascript:')) return children();
+        const abs = href.startsWith('http') ? href : new URL(href, location.origin).href;
+        return `<a href="${esc(abs)}">${children()}</a>`;
+      }
+      case 'strong':
+      case 'b':
+        return `<strong>${children()}</strong>`;
+      case 'em':
+      case 'i':
+        return `<em>${children()}</em>`;
+      case 'pre': {
+        const code = n.querySelector('code');
+        const lang = (code || n).className.match(/language-(\S+)/)?.[1] ?? '';
+        const text = (code || n).textContent;
+        const attr = lang ? ` class="language-${esc(lang)}"` : '';
+        return `<pre><code${attr}>${esc(text.trimEnd())}</code></pre>`;
+      }
+      case 'code':
+        return n.closest('pre') ? children() : `<code>${esc(n.textContent)}</code>`;
+      case 'br':   return '<br>';
+      case 'hr':   return '<hr>';
+      case 'p':    return `<p>${children()}</p>`;
+      case 'h1':   return `<h1>${children()}</h1>`;
+      case 'h2':   return `<h2>${children()}</h2>`;
+      case 'h3':   return `<h3>${children()}</h3>`;
+      case 'h4':   return `<h4>${children()}</h4>`;
+      case 'h5':   return `<h5>${children()}</h5>`;
+      case 'h6':   return `<h6>${children()}</h6>`;
+      case 'ul':   return `<ul>${children()}</ul>`;
+      case 'ol':   return `<ol>${children()}</ol>`;
+      case 'li':   return `<li>${children()}</li>`;
+      case 'table':  return `<table>${children()}</table>`;
+      case 'thead':  return `<thead>${children()}</thead>`;
+      case 'tbody':  return `<tbody>${children()}</tbody>`;
+      case 'tfoot':  return `<tfoot>${children()}</tfoot>`;
+      case 'tr':     return `<tr>${children()}</tr>`;
+      case 'th':     return `<th>${children()}</th>`;
+      case 'td':     return `<td>${children()}</td>`;
+      default:       return children();
+    }
+  }
+
+  return walk(node);
+}
+
+// ---------------------------------------------------------------------------
 // DOM scraping
 // ---------------------------------------------------------------------------
 
@@ -190,14 +286,15 @@ async function scrapeSources() {
  */
 function scrapeMessages(sources) {
   const messages = [];
-  const md = el => htmlToMarkdown(el, sources).trim();
+  const md   = el => htmlToMarkdown(el, sources).trim();
+  const html = el => htmlToCleanHtml(el, sources).trim();
+  const msg  = (role, el) => ({ role, text: md(el), html: html(el) });
 
   // Strategy 1: role-attributed elements (most reliable if present)
   const roleEls = document.querySelectorAll('[data-message-author-role]');
   if (roleEls.length > 0) {
     roleEls.forEach(el => {
-      const role = el.getAttribute('data-message-author-role');
-      messages.push({ role, text: md(el) });
+      messages.push(msg(el.getAttribute('data-message-author-role'), el));
     });
     return messages;
   }
@@ -207,7 +304,7 @@ function scrapeMessages(sources) {
   if (turns.length > 0) {
     turns.forEach(el => {
       const isUser = el.tagName === 'USER-QUERY' || el.classList.contains('user-turn');
-      messages.push({ role: isUser ? 'user' : 'model', text: md(el) });
+      messages.push(msg(isUser ? 'user' : 'model', el));
     });
     return messages;
   }
@@ -228,7 +325,7 @@ function scrapeMessages(sources) {
       const pos = a.el.compareDocumentPosition(b.el);
       return pos & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
     });
-    all.forEach(({ role, el }) => messages.push({ role, text: md(el) }));
+    all.forEach(({ role, el }) => messages.push(msg(role, el)));
     return messages;
   }
 
