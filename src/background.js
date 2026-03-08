@@ -227,22 +227,20 @@ function buildMarkdown(messages, url, sources) {
   return lines.join('\n');
 }
 
-function buildFileName(messages) {
+function buildFileName(messages, title) {
   const now = new Date();
   const datePart = now.toISOString().slice(0, 10); // YYYY-MM-DD
   const timePart = now.toTimeString().slice(0, 5).replace(':', ''); // HHMM
 
-  const firstUser = messages.find(m => m.role === 'user');
-  const snippet = firstUser
-    ? firstUser.text
-        .slice(0, 40)
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .trim()
-        .replace(/\s+/g, '-')
-    : 'chat';
+  const raw = title || messages.find(m => m.role === 'user')?.text || 'chat';
+  const slug = raw
+    .slice(0, 60)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
 
-  return `${datePart}_${timePart}_${snippet}.md`;
+  return `${datePart}_${timePart}_${slug || 'chat'}.md`;
 }
 
 // ---------------------------------------------------------------------------
@@ -298,7 +296,7 @@ async function uploadFile(token, folderId, fileName, content) {
 // Main handler
 // ---------------------------------------------------------------------------
 
-async function handleSaveChat({ messages, url, sources }) {
+async function handleSaveChat({ messages, url, sources, title }) {
   if (!messages || messages.length === 0) {
     throw new Error('No messages to save.');
   }
@@ -306,7 +304,7 @@ async function handleSaveChat({ messages, url, sources }) {
   const token = await getToken(true);
   const folderId = await ensureFolder(token);
   const markdown = buildMarkdown(messages, url, sources);
-  const fileName = buildFileName(messages);
+  const fileName = buildFileName(messages, title);
   const file = await uploadFile(token, folderId, fileName, markdown);
 
   return { ok: true, webViewLink: file.webViewLink, fileId: file.id };
