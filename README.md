@@ -1,23 +1,34 @@
 # Lapidary
 
-A Chrome extension that saves Gemini conversations to Google Drive as Markdown files — on demand, with a single click.
+A Chrome extension that saves Gemini conversations to Google Drive as Markdown files or Google Docs — on demand, with a single click.
 
-**Why:** Gemini's chat history can be turned off for privacy, but you might still want your own archive. This extension lets you save any conversation yourself, to a folder only you control in Drive.
+**Why:** Gemini's chat history can be turned off for privacy, but you might still want your own archive. Or maybe you have chat history enabled, but you want to keep a conversation forever. This extension lets you save any conversation yourself, to a folder only you control in Drive.
 
 ---
 
 ## How it works
 
 - A **Save to Drive** button is injected into the Gemini UI
-- Clicking it scrapes the current conversation and uploads a `.md` file to a "Gemini Chats" folder in your Drive
-- Files are named `YYYY-MM-DD_HHMM_first-message-slug.md`
+- Clicking it scrapes the current conversation and uploads it to a "Gemini Chats" folder in your Drive
+- **Two formats supported:**
+    - **Markdown (.md):** Lightweight, portable, fast.
+    - **Google Doc:** Richer formatting, but slower to generate.
+- Files are named `YYYY-MM-DD_HHMM_first-message-slug`
+- You can toggle your preferred format in the extension popup
 - The extension only has access to files it creates (`drive.file` scope) — not your broader Drive
 
 ---
 
 ## Setup
 
-### 1. Get a Google Cloud OAuth2 client ID
+### 1. Load the extension in Chrome
+
+1. Open Chrome and navigate to `chrome://extensions`
+2. Enable **Developer mode** (toggle in the top-right corner)
+3. Click **Load unpacked** and select the `lapidary/` directory
+4. The extension will appear in your list with a generated **Extension ID** (a 32-character string like `abcdefghijklmnopabcdefghijklmnop`)
+
+### 2. Get a Google Cloud OAuth2 client ID
 
 This is a one-time developer setup. Your users never need to do this — they just see a normal Google sign-in prompt when they first use the extension.
 
@@ -25,38 +36,23 @@ This is a one-time developer setup. Your users never need to do this — they ju
 2. Navigate to **APIs & Services → Library** and enable the **Google Drive API**
 3. Navigate to **APIs & Services → Credentials** and click **Create Credentials → OAuth 2.0 Client ID**
 4. Set the application type to **Chrome Extension**
-5. Leave the Item ID field blank for now (you'll fill it in after step 3 below)
+5. Enter the Extension ID from step 1 into the Item ID field
 6. Click **Create** and copy the generated client ID — it looks like `123456789-abc...xyz.apps.googleusercontent.com`
 
 > **OAuth consent screen:** If prompted to configure one, set it to **External**, add your email as a test user, and add the scope `https://www.googleapis.com/auth/drive.file`. You don't need to publish it for personal use.
 
-### 2. Add the client ID to the manifest
+### . Add the client ID to the manifest
 
 Open `manifest.json` and replace the placeholder:
 
 ```json
 "oauth2": {
-  "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
+  "client_id": "xxxxx.apps.googleusercontent.com",
   ...
 }
 ```
 
-### 3. Load the extension in Chrome
-
-1. Open Chrome and navigate to `chrome://extensions`
-2. Enable **Developer mode** (toggle in the top-right corner)
-3. Click **Load unpacked** and select the `lapidary/` directory
-4. The extension will appear in your list with a generated **Extension ID** (a 32-character string like `abcdefghijklmnopabcdefghijklmnop`)
-
-### 4. Register the extension ID with Google Cloud
-
-1. Go back to your OAuth2 credential in Google Cloud Console
-2. Edit the credential and paste your extension's ID into the **Item ID** field
-3. Save
-
-This tells Google that this specific extension is allowed to use your OAuth2 client.
-
-### 5. Verify it works
+### 4. Verify it works
 
 1. Navigate to [gemini.google.com](https://gemini.google.com) and start a conversation
 2. You should see a **Save to Drive** button in the header toolbar
@@ -76,7 +72,7 @@ lapidary/
 │   └── background.js      — Service worker; handles OAuth and Drive API calls
 ├── popup/
 │   ├── popup.html         — Extension popup UI
-│   └── popup.js           — Shows auth status and link to Drive folder
+│   └── popup.js           — Shows auth status, link to Drive folder, and format toggle
 ├── icons/
 │   ├── icon16.png
 │   ├── icon48.png
