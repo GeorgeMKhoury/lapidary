@@ -109,6 +109,48 @@
     }
     a.drive-link:hover { background: #d2e3fc; }
 
+    .format-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #5f6368;
+    }
+
+    .format-row span {
+      flex-shrink: 0;
+    }
+
+    .toggle-group {
+      display: flex;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid #dadce0;
+    }
+
+    .toggle-group button {
+      width: auto;
+      flex: 1;
+      padding: 6px 12px;
+      border-radius: 0;
+      border: none;
+      font-size: 12px;
+      font-weight: 500;
+      background: #f1f3f4;
+      color: #5f6368;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .toggle-group button.active {
+      background: #1a73e8;
+      color: #fff;
+    }
+
+    .toggle-group button:not(.active):hover {
+      background: #e8eaed;
+    }
+
     #message {
       margin-top: 10px;
       font-size: 12px;

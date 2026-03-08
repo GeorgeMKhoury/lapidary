@@ -227,7 +227,43 @@ function buildMarkdown(messages, url, sources) {
   return lines.join('\n');
 }
 
-function buildFileName(messages, title) {
+function buildHtml(messages, url, sources) {
+  const now = new Date();
+  const dateStr = now.toISOString().replace('T', ' ').slice(0, 16);
+
+  const escape = s => s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+  const parts = [
+    '<html><body>',
+    `<h1>Gemini Chat \u2014 ${escape(dateStr)}</h1>`,
+    `<p><a href="${escape(url)}">${escape(url)}</a></p>`,
+  ];
+
+  for (const { role, text } of messages) {
+    const heading = role === 'user' ? 'You' : 'Gemini';
+    parts.push(`<h2>${heading}</h2>`);
+    const html = escape(text).replace(/\n/g, '<br>');
+    parts.push(`<p>${html}</p>`);
+  }
+
+  if (sources && sources.length > 0) {
+    parts.push('<h2>Sources</h2><ol>');
+    for (const { title, siteName, url: sourceUrl } of sources) {
+      const label = escape(title || siteName || sourceUrl);
+      parts.push(`<li><a href="${escape(sourceUrl)}">${label}</a></li>`);
+    }
+    parts.push('</ol>');
+  }
+
+  parts.push('</body></html>');
+  return parts.join('\n');
+}
+
+function buildFileName(messages, title, format) {
   const now = new Date();
   const datePart = now.toISOString().slice(0, 10); // YYYY-MM-DD
   const timePart = now.toTimeString().slice(0, 5).replace(':', ''); // HHMM
@@ -240,19 +276,22 @@ function buildFileName(messages, title) {
     .trim()
     .replace(/\s+/g, '-');
 
-  return `${datePart}_${timePart}_${slug || 'chat'}.md`;
+  const base = `${datePart}_${timePart}_${slug || 'chat'}`;
+  return format === 'markdown' ? `${base}.md` : base;
 }
 
 // ---------------------------------------------------------------------------
 // Multipart upload
 // ---------------------------------------------------------------------------
 
-async function uploadFile(token, folderId, fileName, content) {
+async function uploadFile(token, folderId, fileName, content, format) {
+  const isDoc = format === 'googledoc';
   const metadata = {
     name: fileName,
-    mimeType: 'text/markdown',
+    mimeType: isDoc ? 'application/vnd.google-apps.document' : 'text/markdown',
     parents: [folderId],
   };
+  const contentType = isDoc ? 'text/html' : 'text/markdown';
 
   // Generate a boundary that doesn't appear in the content
   let boundary;
@@ -266,7 +305,7 @@ async function uploadFile(token, folderId, fileName, content) {
     '',
     JSON.stringify(metadata),
     `--${boundary}`,
-    'Content-Type: text/markdown; charset=UTF-8',
+    `Content-Type: ${contentType}; charset=UTF-8`,
     '',
     content,
     `--${boundary}--`,
@@ -301,11 +340,15 @@ async function handleSaveChat({ messages, url, sources, title }) {
     throw new Error('No messages to save.');
   }
 
+  const { saveFormat = 'markdown' } = await chrome.storage.sync.get({ saveFormat: 'markdown' });
+
   const token = await getToken(true);
   const folderId = await ensureFolder(token);
-  const markdown = buildMarkdown(messages, url, sources);
-  const fileName = buildFileName(messages, title);
-  const file = await uploadFile(token, folderId, fileName, markdown);
+  const content = saveFormat === 'googledoc'
+    ? buildHtml(messages, url, sources)
+    : buildMarkdown(messages, url, sources);
+  const fileName = buildFileName(messages, title, saveFormat);
+  const file = await uploadFile(token, folderId, fileName, content, saveFormat);
 
   return { ok: true, webViewLink: file.webViewLink, fileId: file.id };
 }

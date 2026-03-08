@@ -52,6 +52,45 @@ function renderSignedIn(email, folderLink) {
     actionsEl.appendChild(note);
   }
 
+  // Format selector
+  const formatRow = document.createElement('div');
+  formatRow.className = 'format-row';
+
+  const label = document.createElement('span');
+  label.textContent = 'Save as:';
+  formatRow.appendChild(label);
+
+  const toggleGroup = document.createElement('div');
+  toggleGroup.className = 'toggle-group';
+
+  const mdBtn = document.createElement('button');
+  mdBtn.textContent = 'Markdown';
+  const docBtn = document.createElement('button');
+  docBtn.textContent = 'Google Doc';
+
+  toggleGroup.appendChild(mdBtn);
+  toggleGroup.appendChild(docBtn);
+  formatRow.appendChild(toggleGroup);
+  actionsEl.appendChild(formatRow);
+
+  function applyFormat(fmt) {
+    mdBtn.classList.toggle('active', fmt === 'markdown');
+    docBtn.classList.toggle('active', fmt === 'googledoc');
+  }
+
+  chrome.storage.sync.get({ saveFormat: 'markdown' }, ({ saveFormat }) => {
+    applyFormat(saveFormat);
+  });
+
+  mdBtn.addEventListener('click', () => {
+    applyFormat('markdown');
+    chrome.storage.sync.set({ saveFormat: 'markdown' });
+  });
+  docBtn.addEventListener('click', () => {
+    applyFormat('googledoc');
+    chrome.storage.sync.set({ saveFormat: 'googledoc' });
+  });
+
   const signOutBtn = document.createElement('button');
   signOutBtn.className = 'btn-danger';
   signOutBtn.textContent = 'Sign out';
